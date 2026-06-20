@@ -39,7 +39,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -100,7 +101,8 @@ jobs:
       ZED_MINIDUMP_ENDPOINT: ${{ secrets.ZED_SENTRY_MINIDUMP_ENDPOINT }}
       CC: clang-18
       CXX: clang++-18
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -150,7 +152,8 @@ jobs:
       ZED_MINIDUMP_ENDPOINT: ${{ secrets.ZED_SENTRY_MINIDUMP_ENDPOINT }}
       CC: clang-18
       CXX: clang++-18
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -271,7 +274,8 @@ jobs:
       APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -328,7 +332,8 @@ jobs:
       APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd

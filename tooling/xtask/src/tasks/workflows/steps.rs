@@ -9,12 +9,15 @@ use crate::tasks::workflows::{
 
 pub(crate) fn use_clang(job: Job) -> Job {
     // WebRTC's C++ headers contain name-resolution issues (e.g. `Network` type
-    // shadowing in port_interface.h) that surface as errors under strict modern
-    // compilers. Setting -Wno-error prevents these from being fatal while still
-    // surfacing the warnings.
+    // shadowing in port_interface.h) that are hard errors under strict modern
+    // compilers. -fpermissive downgrades these conformance errors to warnings,
+    // and -Wno-error ensures any remaining -Werror promotions don't kill the
+    // build. CARGO_TERM_VERBOSE surfaces the actual cc-rs compiler invocation
+    // so future failures are diagnosable instead of silently truncated.
     job.add_env(Env::new("CC", "clang"))
         .add_env(Env::new("CXX", "clang++"))
-        .add_env(Env::new("CXXFLAGS", "-Wno-error"))
+        .add_env(Env::new("CXXFLAGS", "-fpermissive -Wno-error"))
+        .add_env(Env::new("CARGO_TERM_VERBOSE", "true"))
 }
 
 const SCCACHE_R2_BUCKET: &str = "sccache-zed";

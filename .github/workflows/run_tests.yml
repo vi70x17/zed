@@ -224,7 +224,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -267,7 +268,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -302,7 +304,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -386,7 +389,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -449,7 +453,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -528,7 +533,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -577,7 +583,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -626,7 +633,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -699,7 +707,8 @@ jobs:
     env:
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -738,7 +747,8 @@ jobs:
       DOCS_CONSENT_IO_INSTANCE: ${{ secrets.DOCS_CONSENT_IO_INSTANCE }}
       CC: clang
       CXX: clang++
-      CXXFLAGS: -Wno-error
+      CXXFLAGS: -fpermissive -Wno-error
+      CARGO_TERM_VERBOSE: 'true'
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411

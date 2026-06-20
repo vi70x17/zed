@@ -165,7 +165,8 @@ pub(crate) fn bundle_linux(
             .envs(bundle_envs(platform))
             .add_env(Env::new("CC", "clang-18"))
             .add_env(Env::new("CXX", "clang++-18"))
-            .add_env(Env::new("CXXFLAGS", "-Wno-error"))
+            .add_env(Env::new("CXXFLAGS", "-fpermissive -Wno-error"))
+            .add_env(Env::new("CARGO_TERM_VERBOSE", "true"))
             .add_step(steps::checkout_repo())
             .add_step(steps::cache_rust_dependencies_namespace())
             .when_some(release_channel, |job, release_channel| {
