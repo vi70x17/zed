@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::tasks::workflows::{
     release::ReleaseBundleJobs,
     runners::{Arch, Platform, ReleaseChannel},
-    steps::{FluentBuilder, IfNoFilesFound, NamedJob, UploadArtifactStep, dependant_job, named},
+    steps::{FluentBuilder, IfNoFilesFound, NamedJob, UploadArtifactStep, dependant_job, named, use_clang},
     vars::{self, assets, bundle_envs},
 };
 
@@ -72,24 +72,26 @@ pub(crate) fn bundle_mac(
     };
     NamedJob {
         name: format!("bundle_mac_{arch}"),
-        job: bundle_job(deps)
-            .runs_on(runners::MAC_DEFAULT)
-            .envs(bundle_envs(platform))
-            .add_step(steps::checkout_repo())
-            .add_step(steps::cache_rust_dependencies_namespace())
-            .when_some(release_channel, |job, release_channel| {
-                job.add_step(set_release_channel(platform, release_channel))
-            })
-            .add_step(steps::setup_node())
-            .add_step(steps::setup_sentry())
-            .add_step(steps::clear_target_dir_if_large(runners::Platform::Mac))
-            .add_step(bundle_mac(arch))
-            .add_step(upload_artifact(&format!(
-                "target/{arch}-apple-darwin/release/{artifact_name}"
-            )))
-            .add_step(upload_artifact(&format!(
-                "target/{remote_server_artifact_name}"
-            ))),
+        job: use_clang(
+            bundle_job(deps)
+                .runs_on(runners::MAC_DEFAULT)
+                .envs(bundle_envs(platform))
+                .add_step(steps::checkout_repo())
+                .add_step(steps::cache_rust_dependencies_namespace())
+                .when_some(release_channel, |job, release_channel| {
+                    job.add_step(set_release_channel(platform, release_channel))
+                })
+                .add_step(steps::setup_node())
+                .add_step(steps::setup_sentry())
+                .add_step(steps::clear_target_dir_if_large(runners::Platform::Mac))
+                .add_step(bundle_mac(arch))
+                .add_step(upload_artifact(&format!(
+                    "target/{arch}-apple-darwin/release/{artifact_name}"
+                )))
+                .add_step(upload_artifact(&format!(
+                    "target/{remote_server_artifact_name}"
+                ))),
+        ),
     }
 }
 
@@ -163,6 +165,7 @@ pub(crate) fn bundle_linux(
             .envs(bundle_envs(platform))
             .add_env(Env::new("CC", "clang-18"))
             .add_env(Env::new("CXX", "clang++-18"))
+            .add_env(Env::new("CXXFLAGS", "-Wno-error"))
             .add_step(steps::checkout_repo())
             .add_step(steps::cache_rust_dependencies_namespace())
             .when_some(release_channel, |job, release_channel| {
@@ -204,7 +207,9 @@ pub(crate) fn bundle_windows(
         job: bundle_job(deps)
             .runs_on(runners::WINDOWS_DEFAULT)
             .envs(bundle_envs(platform))
+            .add_env(("CARGO_NET_GIT_FETCH_WITH_CLI", "true"))
             .add_step(steps::checkout_repo())
+            .add_step(steps::enable_git_longpaths())
             .when_some(release_channel, |job, release_channel| {
                 job.add_step(set_release_channel(platform, release_channel))
             })

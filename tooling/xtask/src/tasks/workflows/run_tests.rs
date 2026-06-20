@@ -551,6 +551,10 @@ pub(crate) fn clippy(platform: Platform, arch: Option<Arch>, harden: bool) -> Na
             this.add_step(steps::harden_runner())
         })
         .add_step(steps::checkout_repo())
+        .when(platform == Platform::Windows, |this| {
+            this.add_step(steps::enable_git_longpaths())
+                .add_env(("CARGO_NET_GIT_FETCH_WITH_CLI", "true"))
+        })
         .add_step(steps::setup_cargo_config(platform))
         .when(
             platform == Platform::Linux || platform == Platform::Mac,
@@ -566,7 +570,7 @@ pub(crate) fn clippy(platform: Platform, arch: Option<Arch>, harden: bool) -> Na
         .add_step(steps::setup_sccache(platform))
         .add_step(steps::clippy(platform, target))
         .add_step(steps::show_sccache_stats(platform));
-    if platform == Platform::Linux {
+    if platform == Platform::Linux || platform == Platform::Mac {
         job = use_clang(job);
     }
     let name = match arch {
@@ -612,9 +616,13 @@ fn run_platform_tests_impl(platform: Platform, filter_packages: bool, harden: bo
                 this.add_step(steps::harden_runner())
             })
             .add_step(steps::checkout_repo())
+            .when(platform == Platform::Windows, |this| {
+                this.add_step(steps::enable_git_longpaths())
+                    .add_env(("CARGO_NET_GIT_FETCH_WITH_CLI", "true"))
+            })
             .add_step(steps::setup_cargo_config(platform))
             .when(platform == Platform::Mac, |this| {
-                this.add_step(steps::cache_rust_dependencies_namespace())
+                use_clang(this.add_step(steps::cache_rust_dependencies_namespace()))
             })
             .when(platform == Platform::Linux, |this| {
                 use_clang(this.add_step(steps::cache_rust_dependencies_namespace()))
@@ -648,7 +656,7 @@ fn build_visual_tests_binary() -> NamedJob {
         named::bash("cargo build -p zed --bin zed_visual_test_runner --features visual-tests")
     }
 
-    named::job(
+    named::job(use_clang(
         Job::default()
             .runs_on(runners::MAC_DEFAULT)
             .add_step(steps::checkout_repo())
@@ -656,7 +664,7 @@ fn build_visual_tests_binary() -> NamedJob {
             .add_step(steps::cache_rust_dependencies_namespace())
             .add_step(cargo_build_visual_tests())
             .add_step(steps::cleanup_cargo_config(Platform::Mac)),
-    )
+    ))
 }
 
 pub(crate) fn check_postgres_and_protobuf_migrations() -> NamedJob {

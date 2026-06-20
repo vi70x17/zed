@@ -8,8 +8,13 @@ use crate::tasks::workflows::{
 };
 
 pub(crate) fn use_clang(job: Job) -> Job {
+    // WebRTC's C++ headers contain name-resolution issues (e.g. `Network` type
+    // shadowing in port_interface.h) that surface as errors under strict modern
+    // compilers. Setting -Wno-error prevents these from being fatal while still
+    // surfacing the warnings.
     job.add_env(Env::new("CC", "clang"))
         .add_env(Env::new("CXX", "clang++"))
+        .add_env(Env::new("CXXFLAGS", "-Wno-error"))
 }
 
 const SCCACHE_R2_BUCKET: &str = "sccache-zed";
@@ -322,6 +327,14 @@ pub fn cache_nix_store_macos() -> Step<Use> {
 
 pub fn setup_linux() -> Step<Run> {
     named::bash("./script/linux")
+}
+
+/// Enables Git long-path support on Windows runners. Cargo's `libgit2` backend
+/// hits the 260-character `MAX_PATH` limit when checking out deeply nested
+/// dependency trees (e.g. `python-environment-tools`). This must run before
+/// any `cargo` invocation that triggers a Git fetch.
+pub fn enable_git_longpaths() -> Step<Run> {
+    named::pwsh("git config --system core.longpaths true")
 }
 
 fn download_wasi_sdk() -> Step<Run> {
