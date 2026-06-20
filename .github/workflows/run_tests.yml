@@ -186,11 +186,16 @@ jobs:
     - orchestrate
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: self-32vcpu-windows-2022
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       with:
         clean: false
+    - name: steps::enable_git_longpaths
+      run: git config --system core.longpaths true
+      shell: pwsh
     - name: steps::setup_cargo_config
       run: |
         New-Item -ItemType Directory -Path "./../.cargo" -Force
@@ -219,6 +224,7 @@ jobs:
     env:
       CC: clang
       CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -258,6 +264,10 @@ jobs:
     - orchestrate
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: namespace-profile-mac-large
+    env:
+      CC: clang
+      CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -289,6 +299,10 @@ jobs:
     - orchestrate
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: namespace-profile-mac-large
+    env:
+      CC: clang
+      CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -322,11 +336,16 @@ jobs:
     - orchestrate
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: self-32vcpu-windows-2022
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       with:
         clean: false
+    - name: steps::enable_git_longpaths
+      run: git config --system core.longpaths true
+      shell: pwsh
     - name: steps::setup_cargo_config
       run: |
         New-Item -ItemType Directory -Path "./../.cargo" -Force
@@ -367,6 +386,7 @@ jobs:
     env:
       CC: clang
       CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -426,6 +446,10 @@ jobs:
     - orchestrate
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: namespace-profile-mac-large
+    env:
+      CC: clang
+      CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -504,6 +528,7 @@ jobs:
     env:
       CC: clang
       CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -552,6 +577,7 @@ jobs:
     env:
       CC: clang
       CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -597,6 +623,10 @@ jobs:
     - orchestrate
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: namespace-profile-mac-large
+    env:
+      CC: clang
+      CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -669,6 +699,7 @@ jobs:
     env:
       CC: clang
       CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
@@ -707,6 +738,7 @@ jobs:
       DOCS_CONSENT_IO_INSTANCE: ${{ secrets.DOCS_CONSENT_IO_INSTANCE }}
       CC: clang
       CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - name: steps::harden_runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411

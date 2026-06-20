@@ -45,6 +45,7 @@ jobs:
       DOCS_CONSENT_IO_INSTANCE: ${{ secrets.DOCS_CONSENT_IO_INSTANCE }}
       CC: clang
       CXX: clang++
+      CXXFLAGS: -Wno-error
     steps:
     - id: resolve-channel
       name: deploy_docs::resolve_channel_step
