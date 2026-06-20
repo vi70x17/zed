@@ -188,13 +188,16 @@ jobs:
     runs-on: self-32vcpu-windows-2022
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      CARGO_HOME: C:\.cargo
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       with:
         clean: false
     - name: steps::enable_git_longpaths
-      run: git config --system core.longpaths true
+      run: |
+        try { Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -ErrorAction Stop } catch { }
+        git config --system core.longpaths true
       shell: pwsh
     - name: steps::setup_cargo_config
       run: |
@@ -266,8 +269,8 @@ jobs:
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: namespace-profile-mac-large
     env:
-      CC: clang
-      CXX: clang++
+      CC: ${{ github.workspace }}/script/ci-webrtc-compat/cc
+      CXX: ${{ github.workspace }}/script/ci-webrtc-compat/cxx
       CXXFLAGS: -fpermissive -Wno-error
       CARGO_TERM_VERBOSE: 'true'
     steps:
@@ -302,8 +305,8 @@ jobs:
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: namespace-profile-mac-large
     env:
-      CC: clang
-      CXX: clang++
+      CC: ${{ github.workspace }}/script/ci-webrtc-compat/cc
+      CXX: ${{ github.workspace }}/script/ci-webrtc-compat/cxx
       CXXFLAGS: -fpermissive -Wno-error
       CARGO_TERM_VERBOSE: 'true'
     steps:
@@ -347,7 +350,9 @@ jobs:
       with:
         clean: false
     - name: steps::enable_git_longpaths
-      run: git config --system core.longpaths true
+      run: |
+        try { Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -ErrorAction Stop } catch { }
+        git config --system core.longpaths true
       shell: pwsh
     - name: steps::setup_cargo_config
       run: |
@@ -451,8 +456,8 @@ jobs:
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: namespace-profile-mac-large
     env:
-      CC: clang
-      CXX: clang++
+      CC: ${{ github.workspace }}/script/ci-webrtc-compat/cc
+      CXX: ${{ github.workspace }}/script/ci-webrtc-compat/cxx
       CXXFLAGS: -fpermissive -Wno-error
       CARGO_TERM_VERBOSE: 'true'
     steps:
@@ -631,8 +636,8 @@ jobs:
     if: needs.orchestrate.outputs.run_tests == 'true' && github.event_name != 'merge_group'
     runs-on: namespace-profile-mac-large
     env:
-      CC: clang
-      CXX: clang++
+      CC: ${{ github.workspace }}/script/ci-webrtc-compat/cc
+      CXX: ${{ github.workspace }}/script/ci-webrtc-compat/cxx
       CXXFLAGS: -fpermissive -Wno-error
       CARGO_TERM_VERBOSE: 'true'
     steps:

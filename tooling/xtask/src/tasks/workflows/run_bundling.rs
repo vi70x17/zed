@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::tasks::workflows::{
     release::ReleaseBundleJobs,
     runners::{Arch, Platform, ReleaseChannel},
-    steps::{FluentBuilder, IfNoFilesFound, NamedJob, UploadArtifactStep, dependant_job, named, use_clang},
+    steps::{FluentBuilder, IfNoFilesFound, NamedJob, UploadArtifactStep, dependant_job, named, setup_webrtc_cxx_compat, use_clang},
     vars::{self, assets, bundle_envs},
 };
 
@@ -70,28 +70,29 @@ pub(crate) fn bundle_mac(
         Arch::X86_64 => assets::REMOTE_SERVER_MAC_X86_64,
         Arch::AARCH64 => assets::REMOTE_SERVER_MAC_AARCH64,
     };
+    let job = bundle_job(deps)
+        .runs_on(runners::MAC_DEFAULT)
+        .envs(bundle_envs(platform))
+        .add_step(steps::checkout_repo())
+        .add_step(steps::cache_rust_dependencies_namespace())
+        .when_some(release_channel, |job, release_channel| {
+            job.add_step(set_release_channel(platform, release_channel))
+        })
+        .add_step(steps::setup_node())
+        .add_step(steps::setup_sentry())
+        .add_step(steps::clear_target_dir_if_large(runners::Platform::Mac))
+        .add_step(bundle_mac(arch))
+        .add_step(upload_artifact(&format!(
+            "target/{arch}-apple-darwin/release/{artifact_name}"
+        )))
+        .add_step(upload_artifact(&format!(
+            "target/{remote_server_artifact_name}"
+        )));
+    let job = use_clang(job);
+    let job = setup_webrtc_cxx_compat(job);
     NamedJob {
         name: format!("bundle_mac_{arch}"),
-        job: use_clang(
-            bundle_job(deps)
-                .runs_on(runners::MAC_DEFAULT)
-                .envs(bundle_envs(platform))
-                .add_step(steps::checkout_repo())
-                .add_step(steps::cache_rust_dependencies_namespace())
-                .when_some(release_channel, |job, release_channel| {
-                    job.add_step(set_release_channel(platform, release_channel))
-                })
-                .add_step(steps::setup_node())
-                .add_step(steps::setup_sentry())
-                .add_step(steps::clear_target_dir_if_large(runners::Platform::Mac))
-                .add_step(bundle_mac(arch))
-                .add_step(upload_artifact(&format!(
-                    "target/{arch}-apple-darwin/release/{artifact_name}"
-                )))
-                .add_step(upload_artifact(&format!(
-                    "target/{remote_server_artifact_name}"
-                ))),
-        ),
+        job,
     }
 }
 
@@ -209,6 +210,7 @@ pub(crate) fn bundle_windows(
             .runs_on(runners::WINDOWS_DEFAULT)
             .envs(bundle_envs(platform))
             .add_env(("CARGO_NET_GIT_FETCH_WITH_CLI", "true"))
+            .add_env(("CARGO_HOME", "C:\\.cargo"))
             .add_step(steps::checkout_repo())
             .add_step(steps::enable_git_longpaths())
             .when_some(release_channel, |job, release_channel| {

@@ -178,8 +178,8 @@ jobs:
       APPLE_NOTARIZATION_KEY: ${{ secrets.APPLE_NOTARIZATION_KEY }}
       APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
       APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
-      CC: clang
-      CXX: clang++
+      CC: ${{ github.workspace }}/script/ci-webrtc-compat/cc
+      CXX: ${{ github.workspace }}/script/ci-webrtc-compat/cxx
       CXXFLAGS: -fpermissive -Wno-error
       CARGO_TERM_VERBOSE: 'true'
     steps:
@@ -231,8 +231,8 @@ jobs:
       APPLE_NOTARIZATION_KEY: ${{ secrets.APPLE_NOTARIZATION_KEY }}
       APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
       APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
-      CC: clang
-      CXX: clang++
+      CC: ${{ github.workspace }}/script/ci-webrtc-compat/cc
+      CXX: ${{ github.workspace }}/script/ci-webrtc-compat/cxx
       CXXFLAGS: -fpermissive -Wno-error
       CARGO_TERM_VERBOSE: 'true'
     steps:
@@ -289,13 +289,16 @@ jobs:
       TIMESTAMP_DIGEST: SHA256
       TIMESTAMP_SERVER: http://timestamp.acs.microsoft.com
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      CARGO_HOME: C:\.cargo
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       with:
         clean: false
     - name: steps::enable_git_longpaths
-      run: git config --system core.longpaths true
+      run: |
+        try { Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -ErrorAction Stop } catch { }
+        git config --system core.longpaths true
       shell: pwsh
     - name: steps::setup_sentry
       uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b
@@ -340,13 +343,16 @@ jobs:
       TIMESTAMP_DIGEST: SHA256
       TIMESTAMP_SERVER: http://timestamp.acs.microsoft.com
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      CARGO_HOME: C:\.cargo
     steps:
     - name: steps::checkout_repo
       uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       with:
         clean: false
     - name: steps::enable_git_longpaths
-      run: git config --system core.longpaths true
+      run: |
+        try { Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -ErrorAction Stop } catch { }
+        git config --system core.longpaths true
       shell: pwsh
     - name: steps::setup_sentry
       uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b

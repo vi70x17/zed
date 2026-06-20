@@ -9,7 +9,7 @@ use serde_json::json;
 use crate::tasks::workflows::{
     steps::{
         CommonJobConditions, cache_rust_dependencies_namespace, repository_owner_guard_expression,
-        use_clang,
+        setup_webrtc_cxx_compat, use_clang,
     },
     vars::{self, PathCondition},
 };
@@ -554,6 +554,7 @@ pub(crate) fn clippy(platform: Platform, arch: Option<Arch>, harden: bool) -> Na
         .when(platform == Platform::Windows, |this| {
             this.add_step(steps::enable_git_longpaths())
                 .add_env(("CARGO_NET_GIT_FETCH_WITH_CLI", "true"))
+                .add_env(("CARGO_HOME", "C:\\.cargo"))
         })
         .add_step(steps::setup_cargo_config(platform))
         .when(
@@ -570,8 +571,10 @@ pub(crate) fn clippy(platform: Platform, arch: Option<Arch>, harden: bool) -> Na
         .add_step(steps::setup_sccache(platform))
         .add_step(steps::clippy(platform, target))
         .add_step(steps::show_sccache_stats(platform));
-    if platform == Platform::Linux || platform == Platform::Mac {
+    if platform == Platform::Linux {
         job = use_clang(job);
+    } else if platform == Platform::Mac {
+        job = setup_webrtc_cxx_compat(use_clang(job));
     }
     let name = match arch {
         Some(arch) => format!("clippy_{platform}_{arch}"),
@@ -622,7 +625,9 @@ fn run_platform_tests_impl(platform: Platform, filter_packages: bool, harden: bo
             })
             .add_step(steps::setup_cargo_config(platform))
             .when(platform == Platform::Mac, |this| {
-                use_clang(this.add_step(steps::cache_rust_dependencies_namespace()))
+                setup_webrtc_cxx_compat(use_clang(
+                    this.add_step(steps::cache_rust_dependencies_namespace()),
+                ))
             })
             .when(platform == Platform::Linux, |this| {
                 use_clang(this.add_step(steps::cache_rust_dependencies_namespace()))
@@ -656,7 +661,7 @@ fn build_visual_tests_binary() -> NamedJob {
         named::bash("cargo build -p zed --bin zed_visual_test_runner --features visual-tests")
     }
 
-    named::job(use_clang(
+    named::job(setup_webrtc_cxx_compat(use_clang(
         Job::default()
             .runs_on(runners::MAC_DEFAULT)
             .add_step(steps::checkout_repo())
@@ -664,7 +669,7 @@ fn build_visual_tests_binary() -> NamedJob {
             .add_step(steps::cache_rust_dependencies_namespace())
             .add_step(cargo_build_visual_tests())
             .add_step(steps::cleanup_cargo_config(Platform::Mac)),
-    ))
+    )))
 }
 
 pub(crate) fn check_postgres_and_protobuf_migrations() -> NamedJob {
