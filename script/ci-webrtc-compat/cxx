@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# CI compiler wrapper for C++ compilation.
+#
+# Downgrades C++20 to C++17 to work around Apple libc++ / cxx crate
+# compatibility issues when building webrtc-sys on recent Xcode.
+# The webrtc-sys build script forces -std=c++20, but the cxx crate's
+# generated iterators don't satisfy C++20's std::ranges::contiguous_range
+# concepts in Apple's libc++ (Xcode 15.4+).  Clang uses the last -std=
+# flag on the command line, so we append -std=c++17 to override.
+set -euo pipefail
+args=()
+for arg in "$@"; do
+    if [[ "$arg" == "-std=c++20" ]]; then
+        args+=("-std=c++17")
+    else
+        args+=("$arg")
+    fi
+done
+exec clang++ "${args[@]}"

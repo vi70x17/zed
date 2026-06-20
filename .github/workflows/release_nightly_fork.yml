@@ -8,6 +8,10 @@ on:
 jobs:
   bundle_linux_x86_64:
     runs-on: ubuntu-22.04
+    env:
+      CC: clang
+      CXX: clang++
+      CXXFLAGS: -fpermissive -Wno-error
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -65,6 +69,10 @@ jobs:
 
   bundle_mac_aarch64:
     runs-on: macos-14
+    env:
+      CC: ${{ github.workspace }}/script/ci-webrtc-compat/cc
+      CXX: ${{ github.workspace }}/script/ci-webrtc-compat/cxx
+      CXXFLAGS: -fpermissive -Wno-error
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -99,9 +107,18 @@ jobs:
 
   bundle_windows_x86_64:
     runs-on: windows-2022
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      CARGO_HOME: 'C:\.cargo'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Enable long paths
+        shell: pwsh
+        run: |
+          try { Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -ErrorAction Stop } catch { }
+          git config --system core.longpaths true
 
       - uses: actions-rs/toolchain@v1
         with:

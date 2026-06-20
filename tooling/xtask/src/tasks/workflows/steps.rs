@@ -332,12 +332,36 @@ pub fn setup_linux() -> Step<Run> {
     named::bash("./script/linux")
 }
 
-/// Enables Git long-path support on Windows runners. Cargo's `libgit2` backend
-/// hits the 260-character `MAX_PATH` limit when checking out deeply nested
-/// dependency trees (e.g. `python-environment-tools`). This must run before
-/// any `cargo` invocation that triggers a Git fetch.
+/// Enables Git long-path support on Windows runners and configures the
+/// Windows long-paths registry key. Cargo's `libgit2` backend hits the
+/// 260-character `MAX_PATH` limit when checking out deeply nested dependency
+/// trees (e.g. `python-environment-tools`). The registry key is required for
+/// `libgit2` to use the Windows long-path API; `core.longpaths` alone only
+/// affects the git CLI. On runners without admin access the registry command
+/// is silently skipped (combine with a shortened `CARGO_HOME` as fallback).
 pub fn enable_git_longpaths() -> Step<Run> {
-    named::pwsh("git config --system core.longpaths true")
+    named::pwsh(indoc::indoc! {r#"
+        try { Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -ErrorAction Stop } catch { }
+        git config --system core.longpaths true
+    "#})
+}
+
+/// Sets up C/C++ compiler wrappers on macOS that downgrade `-std=c++20` to
+/// `-std=c++17`. This works around a compatibility issue between the `cxx`
+/// crate's generated C++ code and Apple's libc++ (Xcode 15.4+), where C++20
+/// range concepts cause template instantiation failures. The wrapper scripts
+/// live in `script/ci-webrtc-compat/` and override the `-std=c++20` flag
+/// forced by `webrtc-sys`'s build script (the last `-std=` flag wins in
+/// clang). Must be called AFTER `use_clang()` since it overrides CC/CXX.
+pub(crate) fn setup_webrtc_cxx_compat(job: Job) -> Job {
+    job.add_env(Env::new(
+        "CC",
+        "${{ github.workspace }}/script/ci-webrtc-compat/cc",
+    ))
+    .add_env(Env::new(
+        "CXX",
+        "${{ github.workspace }}/script/ci-webrtc-compat/cxx",
+    ))
 }
 
 fn download_wasi_sdk() -> Step<Run> {
