@@ -2879,6 +2879,29 @@ impl Thread {
                 return Ok(());
             }
 
+            // Check if any tool result signals an AST validation failure.
+            // Tool errors normally feed back to the model for self-correction,
+            // but AST validation failures also enter the corruption retry
+            // pipeline so that corruption_attempt is incremented and model
+            // fallback can be triggered after MAX_CORRUPTION_RETRY_ATTEMPTS.
+            let had_ast_validation_failure = this.read_with(cx, |this, _cx| {
+                this.pending_message()
+                    .tool_results
+                    .values()
+                    .any(|result| {
+                        result
+                            .output
+                            .as_ref()
+                            .and_then(|v| v.get("is_ast_validation_failure"))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
+                    })
+            }).unwrap_or(false);
+
+            if had_ast_validation_failure {
+                error = Some(CompletionError::AstValidationFailed.into());
+            }
+
             if let Some(error) = error {
                 attempt += 1;
                 // Handle corruption-style CompletionErrors separately with their own

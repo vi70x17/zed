@@ -80,7 +80,16 @@ pub enum EditSessionOutput {
         input_path: Option<PathBuf>,
         #[serde(default, skip_serializing_if = "String::is_empty")]
         diff: String,
+        /// When `true`, this error was caused by AST validation rejecting
+        /// the edit (new syntax errors introduced). The turn loop checks
+        /// this flag to trigger the corruption retry pipeline.
+        #[serde(default, skip_serializing_if = "is_false")]
+        is_ast_validation_failure: bool,
     },
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl EditSessionOutput {
@@ -89,6 +98,18 @@ impl EditSessionOutput {
             error: error.into(),
             input_path: None,
             diff: String::new(),
+            is_ast_validation_failure: false,
+        }
+    }
+
+    /// Returns `true` if this error was caused by AST validation rejection.
+    pub fn is_ast_validation_failure(&self) -> bool {
+        match self {
+            Self::Error {
+                is_ast_validation_failure,
+                ..
+            } => *is_ast_validation_failure,
+            _ => false,
         }
     }
 }
@@ -109,6 +130,7 @@ impl std::fmt::Display for EditSessionOutput {
                 error,
                 diff,
                 input_path,
+                ..
             } => {
                 write!(f, "{error}\n")?;
                 if let Some(input_path) = input_path
@@ -303,6 +325,7 @@ pub(crate) async fn run_session(
                     error,
                     input_path: Some(session.input_path),
                     diff,
+                    is_ast_validation_failure: true,
                 });
             }
 
@@ -338,6 +361,7 @@ pub(crate) async fn run_session(
                 error,
                 input_path: Some(session.input_path),
                 diff,
+                is_ast_validation_failure: false,
             })
         }
         EditSessionResult::Failed {
@@ -351,6 +375,7 @@ pub(crate) async fn run_session(
                 error,
                 input_path: None,
                 diff: String::new(),
+                is_ast_validation_failure: false,
             })
         }
     }

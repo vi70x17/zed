@@ -461,6 +461,7 @@ mod tests {
             error,
             diff,
             input_path,
+            ..
         } = result.unwrap_err()
         else {
             panic!("expected error");
@@ -1027,6 +1028,7 @@ mod tests {
             error,
             diff,
             input_path,
+            ..
         } = result.unwrap_err()
         else {
             panic!("expected error");
@@ -2200,6 +2202,7 @@ mod tests {
             error,
             diff,
             input_path,
+            ..
         } = result.unwrap_err()
         else {
             panic!("expected error");
