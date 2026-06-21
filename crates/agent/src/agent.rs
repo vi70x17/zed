@@ -1,3 +1,4 @@
+pub mod ast_validation;
 pub mod corruption;
 mod db;
 mod legacy_thread;
