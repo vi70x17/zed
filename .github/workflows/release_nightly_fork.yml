@@ -2,8 +2,6 @@ name: release_nightly_fork
 env:
   CARGO_TERM_COLOR: always
 on:
-  push:
-    branches: [main]
   workflow_dispatch: {}
 jobs:
   bundle_linux_x86_64:
