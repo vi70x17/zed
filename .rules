@@ -186,3 +186,25 @@ Rules emerge from validated patterns, not one-off observations. The workflow is:
 1. Agent notes a pattern during a session.
 2. Team validates the pattern in code review.
 3. A dedicated commit adds the rule with context on *why* it exists.
+
+---
+
+# ABSOLUTE PROHIBITION: No Rust Compiler or Analyzer Execution
+
+**NEVER run `cargo build`, `cargo check`, `cargo test`, `cargo clippy`, `./script/clippy`, `rust-analyzer`, or ANY Rust compilation/analysis command in this workspace.**
+
+This is a **non-negotiable, hard block**. No exceptions.
+
+## Why
+- Full builds take **50–90 minutes** even on CI (GitHub Actions).
+- Local builds on developer workstations can take significantly longer.
+- The workstation has **only 16 GB of RAM shared with other agents** — running the Rust compiler or `rust-analyzer` consumes enormous memory and starves other processes.
+- Running the compiler or analyzer blocks the terminal for extended periods and provides no value when changes can be validated through code review and static reasoning.
+
+## What to do instead
+- Trust your understanding of the Rust type system and language semantics.
+- Verify correctness through careful code review and reasoning.
+- If you are uncertain whether code compiles, reason about it statically; do **not** invoke `cargo` or any analyzer.
+- If a task genuinely requires compiler validation (e.g., debugging a complex lifetime error), flag it for the user to run locally and report back.
+
+**Violation of this rule wastes significant time, memory, and resources. Treat it as a hard error, not a suggestion.**
