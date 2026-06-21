@@ -2,22 +2,37 @@
 //!
 //! After an edit is applied to a buffer, this module checks whether the
 //! edit introduced new tree-sitter parse errors. If the error count increased
-//! compared to the pre-edit state, the edit is rejected as likely corrupted.
+//! compared to the pre-edit state, the edit is rejected.
 //!
 //! # Design
 //!
 //! ```text
 //! before edit:   buffer.syntax_error_count() → pre_edit_errors
-//! apply edit → save → reparse
+//! apply edit → reparse (in-memory) → validate
 //! after edit:    buffer.syntax_error_count() → post_edit_errors
 //!
 //! if post_edit_errors > pre_edit_errors:
-//!     → reject (CompletionError::AstValidationFailed)
+//!     → reject (EditSessionOutput::Error — model sees and can retry)
 //! ```
 //!
 //! This approach avoids false positives from files that already had syntax
 //! errors before the agent's edit — only *newly introduced* errors trigger
 //! the rejection.
+//!
+//! # Integration with the corruption retry pipeline
+//!
+//! `CompletionError::AstValidationFailed` exists in `thread.rs` and is
+//! recognised by the corruption retry loop, but this module currently
+//! returns an `EditSessionOutput::Error` instead. Tool-level errors are
+//! architecturally separate from model completion errors: the model sees
+//! the tool error message and can self-correct on its next turn without
+//! going through the formal retry-with-model-fallback pipeline.
+//!
+//! If full integration is desired (so that AST validation failures
+//! increment `corruption_attempt` and can trigger model fallback), the
+//! edit-file tool's `run` method would need to propagate
+//! `CompletionError::AstValidationFailed` as an `anyhow::Error` rather
+//! than an `EditSessionOutput::Error`. This is deferred to Phase D.
 
 use language::BufferSnapshot;
 
@@ -63,11 +78,12 @@ pub fn capture_pre_edit_error_count(snapshot: &BufferSnapshot) -> usize {
     snapshot.syntax_error_count()
 }
 
-/// Validate the buffer's syntax after an edit has been applied and saved.
+/// Validate the buffer's syntax after an edit has been applied in-memory.
 ///
 /// Compares the post-edit error count against the pre-edit count captured
-/// by [`capture_pre_edit_error_count`]. Returns an [`AstValidationResult`]
-/// describing the outcome.
+/// by [`capture_pre_edit_error_count`]. Call this **before** saving the
+/// buffer to disk so corrupted edits never reach the filesystem.
+/// Returns an [`AstValidationResult`] describing the outcome.
 pub fn validate_post_edit(
     pre_edit_error_count: usize,
     snapshot: &BufferSnapshot,

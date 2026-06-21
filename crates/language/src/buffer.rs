@@ -3983,13 +3983,37 @@ impl BufferSnapshot {
             })
     }
 
-    /// Returns the total number of tree-sitter ERROR nodes in the buffer's
-    /// syntax tree. Useful for detecting whether an edit introduced syntax
-    /// errors.
+    /// Returns the total number of tree-sitter ERROR and MISSING nodes in
+    /// the buffer's syntax tree. Walks all syntax layers so the count
+    /// reflects individual error nodes, not just layers-with-errors.
+    ///
+    /// Useful for detecting whether an edit introduced new syntax errors
+    /// (compare pre- and post-edit counts).
     pub fn syntax_error_count(&self) -> usize {
+        fn count_error_nodes(cursor: &mut tree_sitter::TreeCursor) -> usize {
+            let mut count = 0;
+            loop {
+                let node = cursor.node();
+                if node.is_error() || node.is_missing() {
+                    count += 1;
+                }
+                if node.has_error() && cursor.goto_first_child() {
+                    count += count_error_nodes(cursor);
+                    cursor.goto_parent();
+                }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            count
+        }
+
         self.syntax_layers()
-            .filter(|layer| layer.node().has_error())
-            .count()
+            .map(|layer| {
+                let mut cursor = layer.node().walk();
+                count_error_nodes(&mut cursor)
+            })
+            .sum()
     }
 
     /// Returns the [`ModelineSettings`].

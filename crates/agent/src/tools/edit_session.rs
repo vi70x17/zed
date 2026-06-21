@@ -279,12 +279,10 @@ pub(crate) async fn run_session(
 ) -> Result<EditSessionOutput, EditSessionOutput> {
     match result {
         EditSessionResult::Completed(session) => {
-            session
-                .context
-                .ensure_buffer_saved(&session.buffer, cx)
-                .await;
-
-            // AST validation: check if the edit introduced new syntax errors.
+            // AST validation: check the in-memory buffer BEFORE saving to disk.
+            // Tree-sitter reparses happen in-memory when the buffer is mutated,
+            // so the error count already reflects the edit. Validating here
+            // ensures corrupted edits never reach the filesystem.
             let post_snapshot = session
                 .buffer
                 .read_with(cx, |buf, _| buf.snapshot());
@@ -307,6 +305,12 @@ pub(crate) async fn run_session(
                     diff,
                 });
             }
+
+            // Only save to disk after validation passes.
+            session
+                .context
+                .ensure_buffer_saved(&session.buffer, cx)
+                .await;
 
             let (new_text, diff) = session.compute_new_text_and_diff(cx).await;
             Ok(EditSessionOutput::Success {
