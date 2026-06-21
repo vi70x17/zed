@@ -36,7 +36,7 @@ jobs:
           node-version: "20"
 
       - name: Build release binary
-        run: cargo build --release --package zed
+        run: cargo build --release --package zed --package remote_server
 
       - name: Package binary
         run: |
@@ -91,13 +91,16 @@ jobs:
           node-version: "20"
 
       - name: Build release binary
-        run: cargo build --release --package zed --target aarch64-apple-darwin
+        env:
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '1'
+          CARGO_PROFILE_RELEASE_LTO: 'true'
+        run: cargo build --release --package zed --package remote_server --target aarch64-apple-darwin
 
       - name: Package binary
         run: |
           mkdir -p release
           cp target/aarch64-apple-darwin/release/zed release/
-          cp target/aarch64-apple-darwin/release/zed-remote-server release/
+          cp target/aarch64-apple-darwin/release/remote_server release/zed-remote-server
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -131,14 +134,14 @@ jobs:
           (Get-Content $path) -replace '(release_channel = )"[^"]*"', '$1"nightly"' | Set-Content $path
 
       - name: Build release binary
-        run: cargo build --release --package zed
+        run: cargo build --release --package zed --package remote_server
 
       - name: Package binary
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release
           Copy-Item target/release/zed.exe release/
-          Copy-Item target/release/zed-remote-server.exe release/
+          Copy-Item target/release/remote_server.exe release/zed-remote-server.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
