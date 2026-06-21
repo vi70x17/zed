@@ -283,6 +283,31 @@ pub(crate) async fn run_session(
                 .context
                 .ensure_buffer_saved(&session.buffer, cx)
                 .await;
+
+            // AST validation: check if the edit introduced new syntax errors.
+            let post_snapshot = session
+                .buffer
+                .read_with(cx, |buf, _| buf.snapshot());
+            let ast_result =
+                crate::ast_validation::validate_post_edit(session.pre_edit_error_count, &post_snapshot);
+            if ast_result.has_new_errors() {
+                log::warn!(
+                    "AST validation failed for {}: {}",
+                    session.input_path.display(),
+                    ast_result.description()
+                );
+                let error = format!(
+                    "Edit rejected: {}",
+                    ast_result.description()
+                );
+                let (_new_text, diff) = session.compute_new_text_and_diff(cx).await;
+                return Err(EditSessionOutput::Error {
+                    error,
+                    input_path: Some(session.input_path),
+                    diff,
+                });
+            }
+
             let (new_text, diff) = session.compute_new_text_and_diff(cx).await;
             Ok(EditSessionOutput::Success {
                 old_text: session.old_text.clone(),
@@ -358,6 +383,9 @@ pub(crate) struct EditSession {
     pipeline: Pipeline,
     context: Arc<EditSessionContext>,
     _finalize_diff_guard: Deferred<Box<dyn FnOnce()>>,
+    /// Syntax error count captured before any edits are applied.
+    /// Used by the AST validation layer to detect newly introduced errors.
+    pre_edit_error_count: usize,
 }
 
 /// The destination of an edit session, identified by its absolute path on
@@ -721,6 +749,7 @@ impl EditSession {
         });
 
         let old_snapshot = buffer.read_with(cx, |buffer, _cx| buffer.snapshot());
+        let pre_edit_error_count = old_snapshot.syntax_error_count();
         let old_text = cx
             .background_spawn({
                 let old_snapshot = old_snapshot.clone();
@@ -738,6 +767,7 @@ impl EditSession {
             pipeline: Pipeline::new(mode, file_changed_since_last_read),
             context,
             _finalize_diff_guard: finalize_diff_guard,
+            pre_edit_error_count,
         })
     }
 

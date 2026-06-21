@@ -3983,6 +3983,15 @@ impl BufferSnapshot {
             })
     }
 
+    /// Returns the total number of tree-sitter ERROR nodes in the buffer's
+    /// syntax tree. Useful for detecting whether an edit introduced syntax
+    /// errors.
+    pub fn syntax_error_count(&self) -> usize {
+        self.syntax_layers()
+            .filter(|layer| layer.node().has_error())
+            .count()
+    }
+
     /// Returns the [`ModelineSettings`].
     pub fn modeline(&self) -> Option<&Arc<ModelineSettings>> {
         self.modeline.as_ref()
