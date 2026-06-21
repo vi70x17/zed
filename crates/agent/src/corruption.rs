@@ -126,6 +126,7 @@ impl CorruptionSnapshot {
 }
 
 /// A telemetry event emitted when corruption is detected and handled.
+// TODO(Phase B): wire into emit_corruption_detected_telemetry to build and attach snapshots
 #[derive(Debug, Clone)]
 pub struct CorruptionEvent {
     /// When the event occurred.
@@ -170,6 +171,7 @@ impl CorruptionEvent {
 /// Settings controlling corruption snapshot behavior.
 ///
 /// Nested under `agent.corruption_defense.snapshots` in the user's settings.
+// TODO(Phase B): wire into Zed settings system under agent.corruption_defense.snapshots
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CorruptionSnapshotSettings {

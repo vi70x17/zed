@@ -6,7 +6,7 @@ use crate::{
     ProjectSnapshot, ReadFileTool, RenameTool, SandboxedTerminalTool, SpawnAgentTool,
     SystemPromptTemplate, Template, Templates, TerminalTool, ToolPermissionDecision, WebSearchTool,
     WriteFileTool,
-    corruption::{CorruptionSnapshot, CorruptionSnapshotSettings},
+    corruption::{CorruptionSignal, CorruptionSnapshot, CorruptionSnapshotSettings},
     decide_permission_from_settings,
     output_quality::{CorruptionConfig, OutputQualityScorer, TaskContext},
 };
@@ -1134,7 +1134,7 @@ fn auto_resolve_permission_outcome(
 #[derive(Debug, Clone)]
 pub struct CorruptionDetail {
     /// Which corruption signals were triggered
-    pub triggered_signals: Vec<String>,
+    pub triggered_signals: Vec<CorruptionSignal>,
     /// Confidence level of the corruption assessment (0.0-1.0)
     pub confidence: f32,
     /// Optional affected file path
@@ -1143,7 +1143,7 @@ pub struct CorruptionDetail {
 
 impl CorruptionDetail {
     pub fn new(
-        triggered_signals: Vec<String>,
+        triggered_signals: Vec<CorruptionSignal>,
         confidence: f32,
         file_path: Option<PathBuf>,
     ) -> Self {
@@ -2934,7 +2934,14 @@ impl Thread {
                                 );
                             } else {
                                 // For non-Corrupted errors, emit a generic event.
-                                let triggered_signals = vec![layer.to_string()];
+                                let signal = match layer {
+                                    "output_quality" => CorruptionSignal::TaskIrrelevance,
+                                    "missing_completion_tool" => CorruptionSignal::TaskIrrelevance,
+                                    "scope_anomaly" => CorruptionSignal::SemanticCollapse,
+                                    "ast_validation" => CorruptionSignal::StructureBreakdown,
+                                    _ => CorruptionSignal::TaskIrrelevance,
+                                };
+                                let triggered_signals = vec![signal];
                                 let fake_detail =
                                     CorruptionDetail::new(triggered_signals, 1.0, None);
                                 this.emit_corruption_detected_telemetry(
@@ -3078,6 +3085,10 @@ impl Thread {
                     error = Some(CompletionError::MissingCompletionTool.into());
                     continue;
                 }
+                // Happy path: turn completed successfully. Reset corruption
+                // counter so transient errors from prior iterations don't
+                // accumulate across future turns in the same session.
+                corruption_attempt = 0;
                 return Ok(());
             } else {
                 let has_queued = this.update(cx, |this, _| this.has_queued_message())?;
@@ -3087,6 +3098,7 @@ impl Thread {
                 }
                 intent = CompletionIntent::ToolResults;
                 attempt = 0;
+                corruption_attempt = 0;
             }
         }
     }
@@ -3163,11 +3175,9 @@ impl Thread {
         prompt_hash: u64,
         snapshot_settings: &CorruptionSnapshotSettings,
     ) -> CorruptionSnapshot {
-        let signals: Vec<crate::corruption::CorruptionSignal> = corruption_detail
+        let signals: Vec<CorruptionSignal> = corruption_detail
             .triggered_signals
-            .iter()
-            .filter_map(|s| s.parse().ok())
-            .collect();
+            .clone();
         let mut snapshot = CorruptionSnapshot::new(
             model.telemetry_id(),
             model.provider_id().to_string(),
@@ -3194,7 +3204,7 @@ impl Thread {
         let triggered_signals: Vec<&str> = corruption_detail
             .triggered_signals
             .iter()
-            .map(|s| s.as_str())
+            .map(|s| s.label())
             .collect();
         let triggered_signals_str = format!("{:?}", triggered_signals);
         telemetry::event!(
@@ -3523,7 +3533,11 @@ impl Thread {
                     assessment.overall_confidence
                 );
                 let detail = CorruptionDetail::new(
-                    assessment.signal_labels(),
+                    assessment
+                        .triggered_signals
+                        .iter()
+                        .map(|r| r.signal)
+                        .collect(),
                     assessment.overall_confidence,
                     None,
                 );
