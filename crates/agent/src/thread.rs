@@ -2933,13 +2933,17 @@ impl Thread {
                                     corruption_attempt,
                                 );
                             } else {
-                                // For non-Corrupted errors, emit a generic event.
+                                // For non-Corrupted errors we do not know which
+                                // specific sub-detector fired, so map each layer
+                                // to the most semantically appropriate signal
+                                // rather than defaulting everything to
+                                // TaskIrrelevance.
                                 let signal = match layer {
-                                    "output_quality" => CorruptionSignal::TaskIrrelevance,
-                                    "missing_completion_tool" => CorruptionSignal::TaskIrrelevance,
+                                    "output_quality" => CorruptionSignal::SemanticCollapse,
+                                    "missing_completion_tool" => CorruptionSignal::StructureBreakdown,
                                     "scope_anomaly" => CorruptionSignal::SemanticCollapse,
                                     "ast_validation" => CorruptionSignal::StructureBreakdown,
-                                    _ => CorruptionSignal::TaskIrrelevance,
+                                    _ => CorruptionSignal::SemanticCollapse,
                                 };
                                 let triggered_signals = vec![signal];
                                 let fake_detail =
@@ -3168,6 +3172,12 @@ impl Thread {
     }
 
     /// Build a corruption snapshot from the current thread state.
+    // TODO(Phase D): wire into emit_corruption_detected_telemetry once the
+    // settings system exposes `CorruptionSnapshotSettings`. Currently the
+    // snapshot infrastructure is defined but not connected to the telemetry
+    // pipeline; leaving this in place keeps the Phase-D integration surface
+    // obvious without carrying dead logic silently.
+    #[allow(dead_code)]
     fn build_corruption_snapshot(
         &self,
         corruption_detail: &CorruptionDetail,
@@ -3520,7 +3530,7 @@ impl Thread {
         // LAYER 1: Output Quality Scoring — run detectors on the rolling
         // window. If corruption is detected, short-circuit the stream by
         // returning a `CompletionError::Corrupted`.
-        let config = CorruptionConfig::default();
+        let config = CorruptionConfig::DEFAULT;
         if let Some(assessment) = OutputQualityScorer::assess(
             &self.last_output_text,
             &self.output_quality_context,

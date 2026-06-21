@@ -48,15 +48,21 @@ pub struct CorruptionConfig {
 
 impl Default for CorruptionConfig {
     fn default() -> Self {
-        Self {
-            min_required_signals: 2,
-            confidence_threshold: 0.75,
-            // Wait until at least 256 bytes have accumulated before scoring.
-            // Very short outputs often look corrupted in isolation (partial
-            // JSON, incomplete sentences, etc.) but are perfectly valid.
-            min_window_bytes: 256,
-        }
+        Self::DEFAULT
     }
+}
+
+impl CorruptionConfig {
+    /// Default configuration, exposed as a `const` so call sites on hot
+    /// paths can avoid the (trivial) overhead of `Default::default()`.
+    pub const DEFAULT: Self = Self {
+        min_required_signals: 2,
+        confidence_threshold: 0.75,
+        // Wait until at least 256 bytes have accumulated before scoring.
+        // Very short outputs often look corrupted in isolation (partial
+        // JSON, incomplete sentences, etc.) but are perfectly valid.
+        min_window_bytes: 256,
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +204,10 @@ impl OutputQualityScorer {
             reports.push(report);
         }
 
+        // We use `max` rather than a weighted average so that a single
+        // very-high-confidence detector (e.g. repetition at 0.98) is not
+        // dragged down by a lower-confidence complementary signal. This
+        // makes the overall score reflect "the strongest reason to stop".
         let overall_confidence = reports
             .iter()
             .map(|r| r.confidence)
@@ -225,46 +235,49 @@ impl OutputQualityScorer {
 ///
 /// Returns `Some(DetectorReport)` when repetition is detected.
 fn detect_repetition(text: &str) -> Option<DetectorReport> {
-    let bytes = text.as_bytes();
-    let len = bytes.len();
-
     // Strategy 1: Single-character RLE (skip whitespace-only runs).
+    // Uses char-based iteration so multi-byte characters (CJK, Cyrillic,
+    // Arabic, etc.) are compared correctly — byte-level comparison would
+    // never match the same multi-byte codepoint repeated in sequence.
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+
     let mut run_len: usize = 1;
     let mut max_run: usize = 0;
-    let mut max_run_byte: u8 = 0;
+    let mut max_run_char: char = '\0';
     for i in 1..len {
-        if bytes[i] == bytes[i - 1] {
+        if chars[i] == chars[i - 1] {
             run_len += 1;
         } else {
             if run_len > max_run {
                 max_run = run_len;
-                max_run_byte = bytes[i - 1];
+                max_run_char = chars[i - 1];
             }
             run_len = 1;
         }
     }
     if run_len > max_run {
         max_run = run_len;
-        max_run_byte = bytes[len - 1];
+        max_run_char = chars[len - 1];
     }
 
-    if max_run >= 48 && !max_run_byte.is_ascii_whitespace() {
+    if max_run >= 48 && !max_run_char.is_whitespace() {
         let confidence = (max_run as f32 / len as f32).min(1.0) * 0.95 + 0.05;
         return Some(DetectorReport {
             signal: CorruptionSignal::Repetition,
             confidence: confidence.min(0.98),
             reason: format!(
                 "single-char run of '{}' ({} times)",
-                max_run_byte as char, max_run
+                max_run_char, max_run
             ),
         });
     }
 
     // Strategy 2: Period detection on the trailing portion.
-    // Examine the last `scan_len` bytes (up to 512).
+    // Examine the last `scan_len` characters (up to 512).
     let scan_len = len.min(512);
     let scan_start = len - scan_len;
-    let scan = &bytes[scan_start..];
+    let scan = &chars[scan_start..];
 
     // Try periods from 2 to scan_len/3 (need at least 3 repetitions to detect).
     for period in 2..=(scan_len / 3).min(128) {
@@ -272,12 +285,12 @@ fn detect_repetition(text: &str) -> Option<DetectorReport> {
         // Count how many positions match `scan[i % period]`.
         let mut matches: usize = 0;
         let mut total: usize = 0;
-        for (i, &b) in scan.iter().enumerate() {
+        for (i, &c) in scan.iter().enumerate() {
             // Skip leading partial period to align.
             let offset = i % period;
             if i >= period {
                 total += 1;
-                if b == scan[offset] {
+                if c == scan[offset] {
                     matches += 1;
                 }
             }
@@ -294,7 +307,7 @@ fn detect_repetition(text: &str) -> Option<DetectorReport> {
         if match_ratio >= 0.85 && num_periods >= 3.0 && scan_len >= 64 {
             let confidence = (match_ratio - 0.85) / 0.15 * 0.2 + 0.75;
             let confidence = confidence.min(0.98);
-            let pattern = String::from_utf8_lossy(&scan[..period]);
+            let pattern: String = scan[..period].iter().collect();
             return Some(DetectorReport {
                 signal: CorruptionSignal::Repetition,
                 confidence,
@@ -392,20 +405,15 @@ fn classify_script(c: char) -> Script {
 /// - ≥ 5 script transitions in the examined window
 fn detect_script_switching(text: &str) -> Option<DetectorReport> {
     // Only examine the trailing portion to catch ongoing collapses.
-    let examine: String = text
-        .chars()
-        .rev()
-        .take(512)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
+    // Collect trailing chars directly into a Vec — avoids the intermediate
+    // String allocation that the previous rev().collect() chain produced.
+    let examine: Vec<char> = text.chars().rev().take(512).collect();
 
     let mut last_script: Option<Script> = None;
     let mut transitions: u32 = 0;
     let mut script_set = std::collections::HashSet::new();
 
-    for c in examine.chars() {
+    for &c in examine.iter().rev() {
         let s = classify_script(c);
         // Skip "boring" classes that don't count as content scripts.
         if matches!(s, Script::Whitespace | Script::Punctuation | Script::Digit) {
@@ -454,12 +462,13 @@ fn detect_script_switching(text: &str) -> Option<DetectorReport> {
 /// Fires when:
 /// - The task context is non-empty (we have keywords to compare against)
 /// - The window contains ≥ 32 "content words" (alphabetic, length ≥ 4)
-/// - The overlap ratio (output words ∩ context keywords) / output words < 0.05
+/// - The overlap ratio (output words ∩ context keywords) / output words < 0.10
+///   AND fewer than 3 absolute keyword matches
 ///
 /// Does NOT fire when:
 /// - The context is empty (no basis for comparison)
 /// - The output is too short to judge
-/// - The output contains code-like structures (braces, semicolons dominate)
+/// - The output is mostly prose (code-character ratio < 20%)
 fn detect_task_irrelevance(text: &str, context: &TaskContext) -> Option<DetectorReport> {
     if context.is_empty() {
         return None;
@@ -467,46 +476,54 @@ fn detect_task_irrelevance(text: &str, context: &TaskContext) -> Option<Detector
 
     // Skip detection if the text looks predominantly like code
     // (high ratio of braces/semicolons/angle brackets to words).
+    // A normal Markdown response with one inline code block can easily
+    // reach 5-10% code characters, so we use 20% as the threshold.
     let code_chars: usize = text
         .chars()
         .filter(|c| matches!(*c, '{' | '}' | ';' | '<' | '>' | '(' | ')' | '=' | '|'))
         .count();
     let total_chars = text.len().max(1);
     let code_ratio = code_chars as f32 / total_chars as f32;
-    if code_ratio > 0.05 {
-        // Text is at least 5% code-significant characters — likely a code output.
+    if code_ratio > 0.20 {
+        // Text is at least 20% code-significant characters — likely a code output.
         return None;
     }
 
-    // Extract content words from the output.
-    let output_words: Vec<String> = text
+    // Count content words and overlap with context keywords in a single
+    // pass to avoid allocating a Vec<String> for the entire window.
+    let mut output_word_count: usize = 0;
+    let mut overlap_count: usize = 0;
+    for word in text
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| w.len() >= 4)
-        .map(|w| w.to_lowercase())
-        .collect();
+    {
+        output_word_count += 1;
+        let lower = word.to_lowercase();
+        if context.keywords.binary_search(&lower).is_ok() {
+            overlap_count += 1;
+        }
+    }
 
-    if output_words.len() < 32 {
+    if output_word_count < 32 {
         return None;
     }
 
-    // Count overlap.
-    let overlap_count = output_words
-        .iter()
-        .filter(|w| context.keywords.binary_search(w).is_ok())
-        .count();
+    let overlap_ratio = overlap_count as f32 / output_word_count as f32;
 
-    let overlap_ratio = overlap_count as f32 / output_words.len() as f32;
-
-    // Fire if overlap is below 5%.
-    if overlap_ratio < 0.05 {
-        let confidence = (1.0 - overlap_ratio / 0.05) * 0.3 + 0.6;
+    // Fire only when overlap is below 10% AND fewer than 3 keywords match.
+    // A 10% threshold alone would still fire for a legitimate response that
+    // uses mostly synonyms; requiring fewer than 3 absolute matches prevents
+    // false positives when the model happens to reuse one or two prompt words
+    // in an otherwise unrelated output.
+    if overlap_ratio < 0.10 && overlap_count < 3 {
+        let confidence = (1.0 - overlap_ratio / 0.10) * 0.3 + 0.6;
         return Some(DetectorReport {
             signal: CorruptionSignal::TaskIrrelevance,
             confidence: confidence.min(0.95),
             reason: format!(
                 "task relevance overlap: {}/{} words ({:.1}%)",
                 overlap_count,
-                output_words.len(),
+                output_word_count,
                 overlap_ratio * 100.0
             ),
         });
@@ -574,6 +591,25 @@ mod tests {
             report.is_none(),
             "whitespace runs should not trigger repetition"
         );
+    }
+
+    #[test]
+    fn test_repetition_cjk_char_run() {
+        // A run of 60 identical CJK characters should be detected as
+        // repetition — previously this was invisible due to byte-level
+        // comparison (each CJK char is 3 bytes, all different at byte level).
+        let text = "Some initial text to fill the window.\n"
+            .to_string()
+            + &"你".repeat(60)
+            + "\nMore text here.";
+        let report = detect_repetition(&text);
+        assert!(
+            report.is_some(),
+            "should detect single-char run of 60 CJK characters"
+        );
+        let r = report.unwrap();
+        assert_eq!(r.signal, CorruptionSignal::Repetition);
+        assert!(r.reason.contains("你"));
     }
 
     // -- Script switching detector -------------------------------------------
@@ -654,6 +690,31 @@ mod tests {
         assert!(
             report.is_none(),
             "relevant output should not trigger irrelevance"
+        );
+    }
+
+    #[test]
+    fn test_task_irrelevance_ignores_low_ratio_with_enough_matches() {
+        // Guard against the false positive where the model uses different
+        // vocabulary but still addresses the task. With a 10% threshold
+        // alone, 2 matches in 40 words (5%) would fire. Requiring at least
+        // 3 absolute matches prevents this.
+        let context = TaskContext::from_prompt(
+            "Fix the authentication bug in src/auth/login.rs that causes \
+             session tokens to expire immediately after creation",
+        );
+        let output = "\
+            Let me fix the auth token issue. First I will check the \
+            implementation step by step to understand how the validation \
+            module handles session management and what changes need to be \
+            made. The problem appears complex but after careful analysis \
+            the solution becomes clear and we can apply the proper fix \
+            ensuring reliability and security of the system overall.";
+        let report = detect_task_irrelevance(output, &context);
+        assert!(
+            report.is_none(),
+            "legitimate response with ≥3 keyword matches should not fire \
+             even when overlap ratio is below 10%"
         );
     }
 
