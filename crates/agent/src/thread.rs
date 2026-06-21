@@ -2902,6 +2902,54 @@ impl Thread {
                 error = Some(CompletionError::AstValidationFailed.into());
             }
 
+            // LAYER 2: Scope anomaly detection
+            // Check if the actual edit scope vastly exceeds what the prompt implied.
+            // Only flag when we can confidently say the task is small but the edit is large.
+            if error.is_none() {
+                let scope_anomaly = this.read_with(cx, |this, _cx| {
+                    let pending = this.pending_message();
+                    
+                    // Build actual scope from tool results
+                    let actual = crate::scope_anomaly::ActualEditScope::from_tool_results(
+                        pending.tool_results.iter().map(|(_, result)| {
+                            (
+                                result.tool_name.to_string(),
+                                result.output.clone().unwrap_or(serde_json::Value::Null),
+                            )
+                        }),
+                    );
+                    
+                    // Estimate expected scope from last user message
+                    let expected = this
+                        .last_user_message()
+                        .and_then(|msg| {
+                            msg.content
+                                .iter()
+                                .find_map(|c| match c {
+                                    UserMessageContent::Text(text) => Some(text.as_str()),
+                                    _ => None,
+                                })
+                        })
+                        .map(|prompt| crate::scope_anomaly::ExpectedEditScope::from_prompt(prompt))
+                        .unwrap_or(crate::scope_anomaly::ExpectedEditScope {
+                            expected_file_count: None,
+                            expected_line_count: None,
+                        });
+                    
+                    let result = crate::scope_anomaly::detect_scope_anomaly(&expected, &actual);
+                    if result.is_anomaly {
+                        Some(result)
+                    } else {
+                        None
+                    }
+                }).unwrap_or(None);
+
+                if let Some(anomaly) = scope_anomaly {
+                    log::warn!("Scope anomaly detected: {}", anomaly.reason);
+                    error = Some(CompletionError::ScopeAnomaly.into());
+                }
+            }
+
             if let Some(error) = error {
                 attempt += 1;
                 // Handle corruption-style CompletionErrors separately with their own

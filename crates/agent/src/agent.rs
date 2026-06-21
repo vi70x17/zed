@@ -6,6 +6,7 @@ mod native_agent_server;
 pub mod outline;
 pub mod output_quality;
 mod pattern_extraction;
+pub mod scope_anomaly;
 mod sandboxing;
 mod templates;
 #[cfg(test)]
