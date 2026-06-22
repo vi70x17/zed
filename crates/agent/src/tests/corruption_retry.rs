@@ -521,3 +521,89 @@ async fn test_clean_output_does_not_trigger_corruption(cx: &mut TestAppContext) 
         "clean task-relevant output should not trigger any corruption retries"
     );
 }
+
+/// When a tool result has `is_ast_validation_failure: true`, the turn loop
+/// should inject `CompletionError::AstValidationFailed` and trigger a retry.
+#[gpui::test]
+async fn test_ast_validation_failure_triggers_retry(cx: &mut TestAppContext) {
+    let ThreadTest { thread, model, .. } = setup(cx, TestModel::Fake).await;
+    let fake_model = model.as_fake();
+
+    thread.update(cx, |thread, _cx| {
+        thread.add_tool(AstFailTool);
+        thread.add_tool(AttemptCompletionTool);
+    });
+
+    let mut events = thread
+        .update(cx, |thread, cx| {
+            thread.send(UserMessageId::new(), ["Edit the file"], cx)
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    // First attempt: model calls ast_fail tool which returns an error with
+    // is_ast_validation_failure: true in its raw_output.
+    let ast_fail_tool_use = LanguageModelToolUse {
+        id: "af_1".into(),
+        name: "ast_fail".into(),
+        raw_input: "{}".to_string(),
+        input: serde_json::json!({}),
+        is_input_complete: true,
+        thought_signature: None,
+    };
+    fake_model.send_last_completion_stream_event(
+        LanguageModelCompletionEvent::ToolUse(ast_fail_tool_use),
+    );
+    fake_model.send_last_completion_stream_event(
+        LanguageModelCompletionEvent::Stop(StopReason::EndTurn),
+    );
+    fake_model.end_last_completion_stream();
+
+    // Advance past the corruption retry delay
+    cx.executor().advance_clock(BASE_RETRY_DELAY);
+    cx.run_until_parked();
+
+    // Second attempt: model calls attempt_completion
+    let attempt_completion_tool_use = LanguageModelToolUse {
+        id: "ac_1".into(),
+        name: "attempt_completion".into(),
+        raw_input: "{}".to_string(),
+        input: serde_json::json!({}),
+        is_input_complete: true,
+        thought_signature: None,
+    };
+    fake_model.send_last_completion_stream_event(
+        LanguageModelCompletionEvent::ToolUse(attempt_completion_tool_use),
+    );
+    fake_model.send_last_completion_stream_event(
+        LanguageModelCompletionEvent::Stop(StopReason::EndTurn),
+    );
+    fake_model.end_last_completion_stream();
+    cx.run_until_parked();
+
+    // Collect events: should see one retry from the AST validation failure
+    let mut retry_events = Vec::new();
+    while let Some(Ok(event)) = events.next().await {
+        match event {
+            ThreadEvent::Retry(retry_status) => {
+                retry_events.push(retry_status);
+            }
+            ThreadEvent::Stop(..) => break,
+            _ => {}
+        }
+    }
+
+    assert_eq!(
+        retry_events.len(),
+        1,
+        "expected exactly 1 retry from AST validation failure"
+    );
+    assert!(
+        retry_events[0]
+            .last_error
+            .to_string()
+            .contains("AST validation"),
+        "retry error should mention AST validation, got: {}",
+        retry_events[0].last_error
+    );
+}

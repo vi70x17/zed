@@ -503,3 +503,56 @@ impl AgentTool for WordListTool {
         })
     }
 }
+
+/// A test tool that always returns an error with
+/// `is_ast_validation_failure: true` in its JSON output.
+/// Used to verify the AST validation corruption retry path.
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct AstFailToolInput {}
+
+#[derive(Serialize, Deserialize)]
+pub struct AstFailToolOutput {
+    pub error: String,
+    pub is_ast_validation_failure: bool,
+}
+
+impl From<AstFailToolOutput> for LanguageModelToolResultContent {
+    fn from(output: AstFailToolOutput) -> Self {
+        output.error.into()
+    }
+}
+
+pub struct AstFailTool;
+
+impl AgentTool for AstFailTool {
+    type Input = AstFailToolInput;
+    type Output = AstFailToolOutput;
+
+    const NAME: &'static str = "ast_fail";
+
+    fn kind() -> acp::ToolKind {
+        acp::ToolKind::Other
+    }
+
+    fn initial_title(
+        &self,
+        _input: Result<Self::Input, serde_json::Value>,
+        _cx: &mut App,
+    ) -> SharedString {
+        "AST Fail".into()
+    }
+
+    fn run(
+        self: Arc<Self>,
+        _input: ToolInput<Self::Input>,
+        _event_stream: ToolCallEventStream,
+        cx: &mut App,
+    ) -> Task<Result<AstFailToolOutput, AstFailToolOutput>> {
+        cx.spawn(async move |_cx| {
+            Err(AstFailToolOutput {
+                error: "Edit rejected: AST validation found new syntax errors".to_string(),
+                is_ast_validation_failure: true,
+            })
+        })
+    }
+}

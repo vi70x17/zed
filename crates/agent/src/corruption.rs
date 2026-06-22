@@ -126,9 +126,9 @@ impl CorruptionSnapshot {
 }
 
 /// A telemetry event emitted when corruption is detected and handled.
-// TODO(Phase D): wire `build_corruption_snapshot` into
-// `emit_corruption_detected_telemetry` once the settings system exposes
-// `CorruptionSnapshotSettings`.
+///
+/// `emit_corruption_detected_telemetry` builds this via `build_corruption_snapshot`
+/// using default settings. Full settings integration is pending.
 #[derive(Debug, Clone)]
 pub struct CorruptionEvent {
     /// When the event occurred.

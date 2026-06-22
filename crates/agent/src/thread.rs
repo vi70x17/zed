@@ -57,6 +57,7 @@ use std::fmt::Write;
 use std::{cell::RefCell, ops::ControlFlow};
 use std::{
     collections::BTreeMap,
+    hash::{Hash, Hasher},
     marker::PhantomData,
     ops::RangeInclusive,
     path::{Path, PathBuf},
@@ -2867,37 +2868,43 @@ impl Thread {
                 Self::process_tool_result(this, event_stream, cx, tool_result)?;
             }
 
-            this.update(cx, |this, cx| {
-                this.flush_pending_message(cx);
-                if this.title.is_none() {
-                    this.generate_title(cx);
-                }
-            })?;
-
-            if cancelled {
-                log::debug!("Turn cancelled by user, exiting");
-                return Ok(());
-            }
-
-            // Check if any tool result signals an AST validation failure.
-            // Tool errors normally feed back to the model for self-correction,
-            // but AST validation failures also enter the corruption retry
-            // pipeline so that corruption_attempt is incremented and model
-            // fallback can be triggered after MAX_CORRUPTION_RETRY_ATTEMPTS.
-            let had_ast_validation_failure = this.read_with(cx, |this, _cx| {
-                this.pending_message()
-                    .tool_results
-                    .values()
-                    .any(|result| {
+            let (had_ast_validation_failure, actual_edit_scope) =
+                this.update(cx, |this, cx| {
+                    // Capture tool-result data BEFORE flushing —
+                    // flush_pending_message takes the pending_message,
+                    // which clears tool_results.
+                    let pm = this.pending_message();
+                    let ast_flag = pm.tool_results.values().any(|result| {
                         result
                             .output
                             .as_ref()
                             .and_then(|v| v.get("is_ast_validation_failure"))
                             .and_then(|v| v.as_bool())
                             .unwrap_or(false)
-                    })
-            }).unwrap_or(false);
+                    });
+                    let scope = crate::scope_anomaly::ActualEditScope::from_tool_results(
+                        pm.tool_results.iter().map(|(_, result)| {
+                            (
+                                result.tool_name.to_string(),
+                                result.output.clone().unwrap_or(serde_json::Value::Null),
+                            )
+                        }),
+                    );
+                    this.flush_pending_message(cx);
+                    if this.title.is_none() {
+                        this.generate_title(cx);
+                    }
+                    (ast_flag, scope)
+                })?;
 
+            if cancelled {
+                log::debug!("Turn cancelled by user, exiting");
+                return Ok(());
+            }
+
+            // If any tool result signals an AST validation failure, enter
+            // the corruption retry pipeline so that corruption_attempt is
+            // incremented and model fallback can be triggered.
             if had_ast_validation_failure {
                 error = Some(CompletionError::AstValidationFailed.into());
             }
@@ -2906,46 +2913,29 @@ impl Thread {
             // Check if the actual edit scope vastly exceeds what the prompt implied.
             // Only flag when we can confidently say the task is small but the edit is large.
             if error.is_none() {
-                let scope_anomaly = this.read_with(cx, |this, _cx| {
-                    let pending = this.pending_message();
-                    
-                    // Build actual scope from tool results
-                    let actual = crate::scope_anomaly::ActualEditScope::from_tool_results(
-                        pending.tool_results.iter().map(|(_, result)| {
-                            (
-                                result.tool_name.to_string(),
-                                result.output.clone().unwrap_or(serde_json::Value::Null),
-                            )
-                        }),
-                    );
-                    
-                    // Estimate expected scope from last user message
-                    let expected = this
-                        .last_user_message()
-                        .and_then(|msg| {
-                            msg.content
-                                .iter()
-                                .find_map(|c| match c {
+                let expected = this
+                    .read_with(cx, |this, _cx| {
+                        this.last_user_message()
+                            .and_then(|msg| {
+                                msg.content.iter().find_map(|c| match c {
                                     UserMessageContent::Text(text) => Some(text.as_str()),
                                     _ => None,
                                 })
-                        })
-                        .map(|prompt| crate::scope_anomaly::ExpectedEditScope::from_prompt(prompt))
-                        .unwrap_or(crate::scope_anomaly::ExpectedEditScope {
-                            expected_file_count: None,
-                            expected_line_count: None,
-                        });
-                    
-                    let result = crate::scope_anomaly::detect_scope_anomaly(&expected, &actual);
-                    if result.is_anomaly {
-                        Some(result)
-                    } else {
-                        None
-                    }
-                }).unwrap_or(None);
+                            })
+                            .map(|prompt| {
+                                crate::scope_anomaly::ExpectedEditScope::from_prompt(prompt)
+                            })
+                    })
+                    .unwrap_or(None)
+                    .unwrap_or(crate::scope_anomaly::ExpectedEditScope {
+                        expected_file_count: None,
+                        expected_line_count: None,
+                    });
 
-                if let Some(anomaly) = scope_anomaly {
-                    log::warn!("Scope anomaly detected: {}", anomaly.reason);
+                let result =
+                    crate::scope_anomaly::detect_scope_anomaly(&expected, &actual_edit_scope);
+                if result.is_anomaly {
+                    log::warn!("Scope anomaly detected: {}", result.reason);
                     error = Some(CompletionError::ScopeAnomaly.into());
                 }
             }
@@ -3243,12 +3233,10 @@ impl Thread {
     }
 
     /// Build a corruption snapshot from the current thread state.
-    // TODO(Phase D): wire into emit_corruption_detected_telemetry once the
-    // settings system exposes `CorruptionSnapshotSettings`. Currently the
-    // snapshot infrastructure is defined but not connected to the telemetry
-    // pipeline; leaving this in place keeps the Phase-D integration surface
-    // obvious without carrying dead logic silently.
-    #[allow(dead_code)]
+    ///
+    /// Captures the model output, triggered signals, and confidence for
+    /// debugging. The snapshot is truncated to a byte budget and optionally
+    /// redacted based on `CorruptionSnapshotSettings`.
     fn build_corruption_snapshot(
         &self,
         corruption_detail: &CorruptionDetail,
@@ -3275,6 +3263,11 @@ impl Thread {
     }
 
     /// Emit a telemetry event for a corruption detection.
+    ///
+    /// Builds a corruption snapshot (using default settings) and includes
+    /// the captured output byte count in the telemetry event. When the
+    /// settings system exposes `CorruptionSnapshotSettings`, this will
+    /// honor the user's snapshot and redaction preferences.
     fn emit_corruption_detected_telemetry(
         &self,
         layer: &'static str,
@@ -3288,6 +3281,21 @@ impl Thread {
             .map(|s| s.label())
             .collect();
         let triggered_signals_str = format!("{:?}", triggered_signals);
+
+        // Build snapshot with default settings (disabled, redacted) so the
+        // pipeline is wired; full settings integration is Phase D.
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.prompt_id.to_string().hash(&mut hasher);
+        let prompt_hash = hasher.finish();
+        let snapshot_settings = CorruptionSnapshotSettings::default();
+        let snapshot = self.build_corruption_snapshot(
+            corruption_detail,
+            model,
+            prompt_hash,
+            &snapshot_settings,
+        );
+        let snapshot_bytes = snapshot.last_output.len();
+
         telemetry::event!(
             "Agent Corruption Detected",
             thread_id = self.id.to_string(),
@@ -3299,6 +3307,7 @@ impl Thread {
             triggered_signals = triggered_signals_str,
             confidence = corruption_detail.confidence,
             retry_count = retry_count,
+            snapshot_bytes = snapshot_bytes,
         );
     }
 
